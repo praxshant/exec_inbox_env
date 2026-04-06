@@ -1,3 +1,12 @@
+---
+title: Exec Inbox Env
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_file: app.py
+pinned: false
+---
 # ExecInbox — AI Executive Assistant Environment
 
 An OpenEnv-compatible inbox management simulation where an AI agent acts as an executive assistant.
