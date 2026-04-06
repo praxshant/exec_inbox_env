@@ -1,0 +1,87 @@
+# openenv.yaml
+
+name: exec-inbox
+version: "1.0.0"
+description: >
+  ExecInbox is a real-world inbox management simulation where an AI agent
+  acts as an executive assistant. The agent must classify emails, set priorities,
+  reply intelligently, and manage deadlines under time pressure.
+
+author: "Prashant Gagneja"
+tags:
+  - email
+  - inbox
+  - executive-assistant
+  - decision-making
+  - scheduling
+
+tasks:
+  - id: easy
+    description: "5 emails, classification only, no ambiguity"
+    difficulty: easy
+    max_steps: 25
+    expected_score_range: [0.6, 0.8]
+
+  - id: medium
+    description: "10 emails, classification + reply, mild ambiguity"
+    difficulty: medium
+    max_steps: 25
+    expected_score_range: [0.4, 0.6]
+
+  - id: hard
+    description: "15 emails, deadlines + hidden priorities + ambiguous intent"
+    difficulty: hard
+    max_steps: 25
+    expected_score_range: [0.3, 0.5]
+
+observation_space:
+  type: object
+  fields:
+    inbox:
+      type: array
+      items: PublicEmail
+    current_time:
+      type: integer
+    pending_tasks:
+      type: array
+      items: Task
+    completed_tasks:
+      type: array
+      items: Task
+
+action_space:
+  type: object
+  fields:
+    type:
+      type: string
+      enum: [classify, reply, prioritize, archive, noop]
+    email_id:
+      type: string
+      optional: true
+    label:
+      type: string
+      enum: [important, spam, promo]
+      optional: true
+    priority:
+      type: string
+      enum: [high, medium, low]
+      optional: true
+    content:
+      type: string
+      optional: true
+
+reward:
+  type: float
+  range: [-1.0, 1.0]
+  description: >
+    Dense step-level reward. Positive for correct classification, prioritization,
+    and timely replies to important emails. Negative for replying to spam,
+    archiving important emails, and missing deadlines.
+
+endpoints:
+  health: GET /
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  grade: POST /grade
+  tasks: GET /tasks
