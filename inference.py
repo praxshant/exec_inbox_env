@@ -334,12 +334,6 @@ def main():
             print(f"[END] task={task} error={str(e)}")
             results[task] = {"final_score": 0.0}
 
-    print("\n===== FINAL SCORES =====")
-    for task, score in results.items():
-        print(f"{task.upper()} → {score.get('final_score', 0.0):.4f}")
-
 
 if __name__ == "__main__":
     main()
-
-# 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
