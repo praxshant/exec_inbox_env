@@ -85,3 +85,6 @@ endpoints:
   state: GET /state
   grade: POST /grade
   tasks: GET /tasks
+
+deployment:
+  entrypoint: server.app:main
