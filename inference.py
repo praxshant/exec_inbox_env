@@ -214,7 +214,6 @@ def smart_action(observation, replied, classified, prioritized, handled, llm_hin
     inbox = observation.get("inbox", [])
     sorted_inbox = sorted(inbox, key=urgency_score)
 
-    # Optional: use LLM hint to bias urgency detection
     llm_urgent = "urgent" in llm_hint.lower() or "reply" in llm_hint.lower()
 
     for email in sorted_inbox:
@@ -225,7 +224,6 @@ def smart_action(observation, replied, classified, prioritized, handled, llm_hin
         priority = prioritize_email(sender, subject, body, label)
         ultra = (is_ultra_critical(email) or llm_urgent) and label == "important"
 
-        # Ultra-critical: reply FIRST before classify/prioritize
         if ultra and eid not in replied:
             replied.add(eid)
             handled.add(eid)
@@ -235,17 +233,14 @@ def smart_action(observation, replied, classified, prioritized, handled, llm_hin
                 "content": generate_reply(subject, body),
             }
 
-        # Classify
         if eid not in classified:
             classified.add(eid)
             return {"type": "classify", "email_id": eid, "label": label}
 
-        # Prioritize
         if eid not in prioritized:
             prioritized.add(eid)
             return {"type": "prioritize", "email_id": eid, "priority": priority}
 
-        # Handle (reply or archive)
         if eid not in handled:
             handled.add(eid)
             if label in ("spam", "promo"):
@@ -261,12 +256,21 @@ def smart_action(observation, replied, classified, prioritized, handled, llm_hin
 
 # Episode runner
 def run_task(task_name: str):
-    reset_resp = requests.post(
-        f"{API_BASE_URL}/reset",
-        json={"task": task_name, "seed": 42},
-    )
-    reset_resp.raise_for_status()
-    observation = reset_resp.json()
+    # ✅ FIX: Print [START] FIRST before any network calls
+    print(f"[START] task={task_name} env=exec-inbox model={MODEL_NAME}", flush=True)
+
+    try:
+        reset_resp = requests.post(
+            f"{API_BASE_URL}/reset",
+            json={"task": task_name, "seed": 42},
+            timeout=30,
+        )
+        reset_resp.raise_for_status()
+        observation = reset_resp.json()
+    except Exception as e:
+        print(f"[STEP] step=1 action=noop reward=0.00 done=true error={e}", flush=True)
+        print(f"[END] success=false steps=1 score=0.000 rewards=0.00", flush=True)
+        return
 
     total_reward = 0.0
     done = False
@@ -276,30 +280,33 @@ def run_task(task_name: str):
     prioritized: set = set()
     handled: set = set()
 
-    print(f"[START] task={task_name} env=exec-inbox model={MODEL_NAME}", flush=True)
     rewards_list = []
 
     while not done and step_num < MAX_STEPS:
         step_num += 1
 
-        # LLM call for compliance — hint may influence urgency bias
         if HF_TOKEN:
             try:
                 llm_hint = get_model_message(step_num, observation)
-            except:
+            except Exception:
                 llm_hint = "noop"
         else:
             llm_hint = "noop"
 
         action = smart_action(observation, replied, classified, prioritized, handled, llm_hint)
 
-        step_resp = requests.post(
-            f"{API_BASE_URL}/step",
-            json=action,
-            params={"task": task_name},
-        )
-        step_resp.raise_for_status()
-        result = step_resp.json()
+        try:
+            step_resp = requests.post(
+                f"{API_BASE_URL}/step",
+                json=action,
+                params={"task": task_name},
+                timeout=30,
+            )
+            step_resp.raise_for_status()
+            result = step_resp.json()
+        except Exception as e:
+            print(f"[STEP] step={step_num} action=noop reward=0.00 done=true error={e}", flush=True)
+            break
 
         observation = result["observation"]
         reward = result["reward"]["value"]
@@ -307,36 +314,40 @@ def run_task(task_name: str):
         total_reward += reward
 
         rewards_list.append(reward)
-        action_str = action['type']
+        action_str = action["type"]
         if action.get("email_id"):
             action_str += f":{action['email_id']}"
+
         print(
             f"[STEP] step={step_num} "
             f"action={action_str} "
             f"reward={reward:.2f} "
             f"done={str(done).lower()} "
             f"error=null",
-            flush=True
+            flush=True,
         )
 
-    grade_resp = requests.post(
-        f"{API_BASE_URL}/grade",
-        params={"task": task_name},
-    )
-    grade_resp.raise_for_status()
-    scores = grade_resp.json()
+    try:
+        grade_resp = requests.post(
+            f"{API_BASE_URL}/grade",
+            params={"task": task_name},
+            timeout=30,
+        )
+        grade_resp.raise_for_status()
+        scores = grade_resp.json()
+        final_score = scores.get("final_score", 0.0)
+    except Exception:
+        final_score = 0.0
 
-    final_score = scores.get("final_score", 0.0)
     success = final_score > 0.3
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards_list)
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards_list) if rewards_list else "0.00"
     print(
         f"[END] success={str(success).lower()} "
         f"steps={step_num} "
         f"score={final_score:.3f} "
         f"rewards={rewards_str}",
-        flush=True
+        flush=True,
     )
-    return scores
 
 
 # Main
@@ -344,15 +355,12 @@ def main():
     task = os.environ.get("TASK", "easy")
     try:
         run_task(task)
-    except Exception:
-        print(
-            f"[END] success=false steps=0 score=0.000 rewards=0.00",
-            flush=True
-        )
-
+    except Exception as e:
+        # Fallback — guarantee [START] and [END] are always emitted
+        print(f"[START] task={task} env=exec-inbox model={MODEL_NAME}", flush=True)
+        print(f"[STEP] step=1 action=noop reward=0.00 done=true error={e}", flush=True)
+        print(f"[END] success=false steps=1 score=0.000 rewards=0.00", flush=True)
 
 
 if __name__ == "__main__":
     main()
-
-# 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
