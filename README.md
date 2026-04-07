@@ -45,7 +45,7 @@ The agent must:
 pip install -r requirements.txt
 
 # Run server
-uvicorn app:app --host 0.0.0.0 --port 7860
+uvicorn server.app:app --host 0.0.0.0 --port 7860
 
 # Run baseline inference (set env vars first)
 export OPENAI_API_KEY=your_key
