@@ -1,7 +1,9 @@
-[project.scripts]
-server = "server.app:app"
+[project]
 name = "exec-inbox-env"
 version = "0.1.0"
+
+[project.scripts]
+start = "server.app:main"
 description = "OpenEnv email inbox environment"
 authors = [{name = "Your Name"}]
 dependencies = [
