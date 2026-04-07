@@ -1,0 +1,16 @@
+[project]
+name = "exec-inbox-env"
+version = "0.1.0"
+description = "OpenEnv email inbox environment"
+authors = [{name = "Your Name"}]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "openai"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
