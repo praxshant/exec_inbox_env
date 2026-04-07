@@ -1,4 +1,5 @@
-[project]
+[project.scripts]
+server = "server.app:main"
 name = "exec-inbox-env"
 version = "0.1.0"
 description = "OpenEnv email inbox environment"
@@ -8,7 +9,8 @@ dependencies = [
     "uvicorn",
     "pydantic",
     "requests",
-    "openai"
+    "openai",
+    "openenv-core>=0.2.0"
 ]
 
 [build-system]
