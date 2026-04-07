@@ -9,7 +9,7 @@ API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:7860")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 MAX_STEPS = 25
-TASKS = ["easy", "medium", "hard"]
+TASKS = [os.environ.get("TASK", "easy")]
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -34,7 +34,6 @@ def get_model_message(step: int, observation: dict) -> str:
         text = (completion.choices[0].message.content or "").strip()
         return text if text else "noop"
     except Exception as e:
-        print(f"[DEBUG] LLM error: {e}")
         return "noop"
 
 
@@ -277,7 +276,8 @@ def run_task(task_name: str):
     prioritized: set = set()
     handled: set = set()
 
-    print(f"[START] task={task_name}")
+    print(f"[START] task={task_name} env=exec-inbox model={MODEL_NAME}", flush=True)
+    rewards_list = []
 
     while not done and step_num < MAX_STEPS:
         step_num += 1
@@ -306,7 +306,18 @@ def run_task(task_name: str):
         done = result["done"]
         total_reward += reward
 
-        print(f"[STEP] step={step_num} reward={round(reward, 3)} action={action}")
+        rewards_list.append(reward)
+        action_str = action['type']
+        if action.get("email_id"):
+            action_str += f":{action['email_id']}"
+        print(
+            f"[STEP] step={step_num} "
+            f"action={action_str} "
+            f"reward={reward:.2f} "
+            f"done={str(done).lower()} "
+            f"error=null",
+            flush=True
+        )
 
     grade_resp = requests.post(
         f"{API_BASE_URL}/grade",
@@ -315,28 +326,30 @@ def run_task(task_name: str):
     grade_resp.raise_for_status()
     scores = grade_resp.json()
 
+    final_score = scores.get("final_score", 0.0)
+    success = final_score > 0.3
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards_list)
     print(
-        f"[END] task={task_name} "
-        f"total_reward={round(total_reward, 3)} "
-        f"final_score={scores.get('final_score', 0.0)}"
+        f"[END] success={str(success).lower()} "
+        f"steps={step_num} "
+        f"score={final_score:.3f} "
+        f"rewards={rewards_str}",
+        flush=True
     )
     return scores
 
 
 # Main
 def main():
-    results = {}
-    for task in TASKS:
-        try:
-            scores = run_task(task)
-            results[task] = scores
-        except Exception as e:
-            print(f"[END] task={task} error={str(e)}")
-            results[task] = {"final_score": 0.0}
+    task = os.environ.get("TASK", "easy")
+    try:
+        run_task(task)
+    except Exception:
+        print(
+            f"[END] success=false steps=0 score=0.000 rewards=0.00",
+            flush=True
+        )
 
-    print("\n===== FINAL SCORES =====")
-    for task, score in results.items():
-        print(f"{task.upper()} → {score.get('final_score', 0.0):.4f}")
 
 
 if __name__ == "__main__":
