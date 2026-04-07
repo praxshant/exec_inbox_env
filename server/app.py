@@ -1,4 +1,4 @@
-# app.py
+# /server/app.py
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,3 +122,11 @@ def grade(task: str = Query(default="easy")):
     actions = env.get_action_history()
     scores = grade_episode(actions, ground_truth)
     return scores
+
+def main():
+    return app
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
