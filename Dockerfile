@@ -7,6 +7,7 @@ WORKDIR /app
 # Install dependencies first (cache layer)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install openenv-core>=0.2.0
 
 # Copy source
 COPY . .
