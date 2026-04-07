@@ -1,5 +1,5 @@
 [project.scripts]
-server = "app:app"
+server = "server.app:app"
 name = "exec-inbox-env"
 version = "0.1.0"
 description = "OpenEnv email inbox environment"
