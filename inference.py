@@ -5,7 +5,7 @@ import os
 import requests
 from openai import OpenAI
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:7860")
+API_BASE_URL = os.environ.get("API_BASE_URL")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 LLM_BASE_URL = os.environ.get("API_BASE_URL")
 API_KEY = os.environ.get("API_KEY")
@@ -261,79 +261,83 @@ def smart_action(observation, replied, classified, prioritized, handled, llm_hin
 
 # Episode runner
 def run_task(task_name: str):
-    reset_resp = requests.post(
-        f"{API_BASE_URL}/reset",
-        json={"task": task_name, "seed": 42},
-    )
-    reset_resp.raise_for_status()
-    observation = reset_resp.json()
-
-    total_reward = 0.0
-    done = False
-    step_num = 0
-    replied: set = set()
-    classified: set = set()
-    prioritized: set = set()
-    handled: set = set()
-
     print(f"[START] task={task_name} env=exec-inbox model={MODEL_NAME}", flush=True)
+
     rewards_list = []
+    step_num = 0
+    final_score = 0.0
+    success = False
 
-    while not done and step_num < MAX_STEPS:
-        step_num += 1
+    try:
+        reset_resp = requests.post(
+            f"{API_BASE_URL}/reset",
+            json={"task": task_name, "seed": 42},
+        )
+        reset_resp.raise_for_status()
+        observation = reset_resp.json()
 
-        # LLM call for compliance — hint may influence urgency bias
-        try:
-            llm_hint = get_model_message(step_num, observation)
-        except:
-            llm_hint = "noop"
+        done = False
+        replied = set()
+        classified = set()
+        prioritized = set()
+        handled = set()
+        scores = {"final_score": 0.0}
 
-        action = smart_action(observation, replied, classified, prioritized, handled, llm_hint)
+        while not done and step_num < MAX_STEPS:
+            step_num += 1
 
-        step_resp = requests.post(
-            f"{API_BASE_URL}/step",
-            json=action,
+            try:
+                llm_hint = get_model_message(step_num, observation)
+            except:
+                llm_hint = "noop"
+
+            action = smart_action(
+                observation, replied, classified, prioritized, handled, llm_hint
+            )
+
+            step_resp = requests.post(
+                f"{API_BASE_URL}/step",
+                json=action,
+                params={"task": task_name},
+            )
+            step_resp.raise_for_status()
+            result = step_resp.json()
+
+            observation = result["observation"]
+            reward = result["reward"]["value"]
+            done = result["done"]
+
+            rewards_list.append(reward)
+
+            action_str = action["type"]
+            if action.get("email_id"):
+                action_str += f":{action['email_id']}"
+
+            print(
+                f"[STEP] step={step_num} action={action_str} reward={reward:.2f} done={str(done).lower()} error=null",
+                flush=True,
+            )
+
+        grade_resp = requests.post(
+            f"{API_BASE_URL}/grade",
             params={"task": task_name},
         )
-        step_resp.raise_for_status()
-        result = step_resp.json()
+        grade_resp.raise_for_status()
+        scores = grade_resp.json()
 
-        observation = result["observation"]
-        reward = result["reward"]["value"]
-        done = result["done"]
-        total_reward += reward
+        final_score = scores.get("final_score", 0.0)
+        success = final_score > 0.3
 
-        rewards_list.append(reward)
-        action_str = action['type']
-        if action.get("email_id"):
-            action_str += f":{action['email_id']}"
-        print(
-            f"[STEP] step={step_num} "
-            f"action={action_str} "
-            f"reward={reward:.2f} "
-            f"done={str(done).lower()} "
-            f"error=null",
-            flush=True
-        )
+    except:
+        pass
 
-    grade_resp = requests.post(
-        f"{API_BASE_URL}/grade",
-        params={"task": task_name},
-    )
-    grade_resp.raise_for_status()
-    scores = grade_resp.json()
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards_list) if rewards_list else "0.00"
 
-    final_score = scores.get("final_score", 0.0)
-    success = final_score > 0.3
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards_list)
     print(
-        f"[END] success={str(success).lower()} "
-        f"steps={step_num} "
-        f"score={final_score:.3f} "
-        f"rewards={rewards_str}",
-        flush=True
+        f"[END] success={str(success).lower()} steps={step_num} score={final_score:.3f} rewards={rewards_str}",
+        flush=True,
     )
-    return scores
+    return {"final_score": final_score}
 
 
 # Main
@@ -343,7 +347,7 @@ def main():
         run_task(task)
     except Exception:
         print(
-            f"[END] success=false steps=0 score=0.000 rewards=0.00",
+            "[END] success=false steps=0 score=0.000 rewards=0.00",
             flush=True
         )
 
