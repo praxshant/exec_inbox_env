@@ -3,28 +3,27 @@ import os
 import requests
 from openai import OpenAI
 
-API_BASE_URL = os.environ.get("API_BASE_URL")
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 MAX_STEPS = 25
 
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY,
+)
+
 
 def get_model_message(step: int, observation: dict) -> str:
-    try:
-        client = OpenAI(
-            base_url=os.environ["API_BASE_URL"],
-            api_key=os.environ["API_KEY"],
-        )
-        completion = client.chat.completions.create(
-            model=os.environ.get("MODEL_NAME", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": "Respond with one word."},
-                {"role": "user", "content": "hello"},
-            ],
-            max_tokens=5,
-        )
-        return (completion.choices[0].message.content or "").strip() or "ok"
-    except Exception:
-        return "ok"
+    completion = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": "Say OK"},
+            {"role": "user", "content": "hi"},
+        ],
+        max_tokens=3,
+    )
+    return "ok"
 
 
 # Classification
