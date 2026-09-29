@@ -91,13 +91,21 @@ docker run -e PORT=8080 -p 8080:8080 exec-inbox # custom port
 
 ### HuggingFace Spaces
 Docker SDK Space, `app_port: 7860` (see the front-matter at the top of this
-file). Push these files to the Space's git remote and it builds automatically:
+file). The optimized environment is deployed and running live here:
+**[https://huggingface.co/spaces/praxshant/exec_inbox_env](https://huggingface.co/spaces/praxshant/exec_inbox_env)**
+
+To deploy updates, push these files to the Space's git remote and it builds automatically:
 ```bash
 git remote add hf https://huggingface.co/spaces/<user>/exec_inbox_env
 git push hf main
 ```
 
 ### Azure — free tier (Docker)
+The optimized environment is deployed and running live on Azure Container Apps (`eastus`):
+**[https://exec-inbox.gentleisland-69027098.eastus.azurecontainerapps.io/](https://exec-inbox.gentleisland-69027098.eastus.azurecontainerapps.io/)**
+
+*(Note: Ingress is external, the API is public but holds no secrets/state per session.)*
+
 Use **Azure Container Apps** (consumption plan): first 180,000 vCPU-s,
 360,000 GiB-s, and 2M requests per month are free, and it scales to zero when
 idle. Push the image to any registry (Docker Hub free works), then:
