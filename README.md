@@ -10,6 +10,8 @@ pinned: false
 
 # ExecInbox — AI Executive Assistant Environment
 
+[![tests](https://github.com/praxshant/exec_inbox_env/actions/workflows/test.yml/badge.svg)](https://github.com/praxshant/exec_inbox_env/actions/workflows/test.yml)
+
 An OpenEnv-compatible inbox management simulation where an AI agent acts as an executive assistant.
 
 ## Overview
@@ -49,6 +51,16 @@ The agent must:
 | GET | `/state` | Get current state |
 | POST | `/grade` | Grade completed episode |
 
+### Authentication (optional)
+Auth is off by default so the public demo stays open. Set `API_KEY` in the
+environment and the mutating/state endpoints (`/reset`, `/step`, `/state`,
+`/grade`) require it — pass `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+Health (`/`) and task discovery (`/tasks`) stay open either way.
+```bash
+export API_KEY=your-secret        # server side
+curl -H "X-API-Key: your-secret" .../state
+```
+
 ## Setup
 ```bash
 # Install dependencies
@@ -81,6 +93,27 @@ python finetune.py
 
 One image runs everywhere. The container reads `PORT` (default `7860`), so
 HuggingFace gets `7860` and Azure gets whatever port it injects — no rebuild.
+
+### Architecture & design decisions
+Cloud-native, and each choice is deliberate (interview-defensible):
+- **One portable image, `$PORT`-driven** — identical artifact on Docker, HF
+  Spaces, and Azure; the platform picks the port. No per-target rebuild, no
+  config drift between environments.
+- **Azure Container Apps on the consumption plan** — serverless containers with
+  **scale-to-zero**, so an idle demo costs ~nothing but keeps HTTPS ingress and
+  autoscale. Chosen over App Service (no free custom Linux containers) and over
+  a VM (pay-while-idle, patching burden).
+- **Registry auth via ACR admin credentials, not managed identity** — a
+  deliberate response to a real constraint: Azure-for-Students *express*
+  environments reject managed-identity registry auth, so the defensible free-tier
+  path is admin user/password. On a paid subscription, switch to managed identity
+  (least-privilege, no stored secret).
+- **Local build → push → deploy** — student-tier blocks ACR Tasks (cloud build),
+  so images build locally and only the built layers are pushed. Same flow a CI
+  runner would use.
+- **Stateless service** — env state is per-process and reset per episode; there's
+  no database and no cross-session data, so horizontal scale and scale-to-zero are
+  safe. Auth is env-gated (see above) for when it fronts something private.
 
 ### Docker (local / anywhere)
 ```bash
@@ -179,13 +212,21 @@ so score is identical and only efficiency moves):
 → **13–25× fewer calls, ~9–16× fewer input tokens, ~22–25× lower latency, zero
 score loss.**
 
+> **What this proves (and what it doesn't).** The benchmark drives a deterministic
+> mock LLM, so it proves the *efficiency* win — call count, token count, latency —
+> independent of any provider. It does **not** claim a model-quality number. Point
+> `LLM_BASE_URL` + `OPENAI_API_KEY` at a real endpoint and `inference.py` runs the
+> exact same batched path against a live model.
+
 **Fine-tuning** (`python finetune.py`): the env already holds the correct
 label/priority for every email, so `finetune.py` emits an OpenAI-format
 `finetune.jsonl` (33 examples) in the *exact* single-call format above — free
-supervised data. After `python finetune.py --launch` (needs `OPENAI_API_KEY`),
-point `MODEL_NAME` at the tuned model. A fine-tuned model learns the schema, so
-you can drop the few-shot scaffolding from the prompt → **shorter prompts +
-smaller model = another latency/cost cut** on top of the batching win.
+supervised data. **The dataset build runs offline with no key**; the actual
+training job (`python finetune.py --launch`) needs `OPENAI_API_KEY` and is
+billable + uploads data, so it's wired up but not auto-run here. After a job
+completes, point `MODEL_NAME` at the tuned model. A fine-tuned model learns the
+schema, so you can drop the few-shot scaffolding from the prompt → **shorter
+prompts + smaller model = another latency/cost cut** on top of the batching win.
 
 ## Reward Design
 

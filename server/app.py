@@ -2,7 +2,7 @@
 
 import os
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict
@@ -49,6 +49,23 @@ class ResetRequest(BaseModel):
     seed: int = 42
 
 
+# Optional API-key auth. If API_KEY is set in the environment, the mutating and
+# state endpoints require it (header `X-API-Key: <key>` or `Authorization:
+# Bearer <key>`). If API_KEY is unset the API is open — the public demo runs
+# open on purpose: it holds no secrets and no cross-session state. Health (`/`)
+# and task discovery (`/tasks`) stay open either way.
+def require_key(
+    x_api_key: Optional[str] = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    expected = os.environ.get("API_KEY")
+    if not expected:
+        return
+    token = x_api_key or (authorization or "").removeprefix("Bearer ").strip()
+    if token != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
 @app.get("/")
 def health():
     return {"status": "ok", "environment": "ExecInbox", "version": "1.0.0"}
@@ -66,7 +83,7 @@ def list_tasks():
     }
 
 
-@app.post("/reset")
+@app.post("/reset", dependencies=[Depends(require_key)])
 def reset(
     req: Optional[ResetRequest] = None,
     task: str = Query(default="easy"),
@@ -87,7 +104,7 @@ def reset(
     return obs.model_dump()
 
 
-@app.post("/step")
+@app.post("/step", dependencies=[Depends(require_key)])
 def step(action: ActionRequest, task: str = Query(default="easy")):
     if task not in envs:
         raise HTTPException(
@@ -108,14 +125,14 @@ def step(action: ActionRequest, task: str = Query(default="easy")):
     }
 
 
-@app.get("/state")
+@app.get("/state", dependencies=[Depends(require_key)])
 def state(task: str = Query(default="easy")):
     if task not in envs:
         raise HTTPException(status_code=400, detail="Invalid task.")
     return envs[task].state().model_dump()
 
 
-@app.post("/grade")
+@app.post("/grade", dependencies=[Depends(require_key)])
 def grade(task: str = Query(default="easy")):
     if task not in envs:
         raise HTTPException(status_code=400, detail="Invalid task.")

@@ -70,9 +70,32 @@ def test_http_layer():
     assert "final_score" in c.post("/grade", params={"task": "easy"}).json()
 
 
+def test_auth():
+    # When API_KEY is set, health/tasks stay open but mutating/state endpoints
+    # require the key; when unset the whole API is open.
+    import os
+    from fastapi.testclient import TestClient
+    from server.app import app
+    c = TestClient(app)
+    os.environ["API_KEY"] = "secret123"
+    try:
+        assert c.get("/").status_code == 200                       # health open
+        assert c.get("/tasks").status_code == 200                  # discovery open
+        assert c.post("/reset", json={"task": "easy"}).status_code == 401
+        r = c.post("/reset", json={"task": "easy"},
+                   headers={"X-API-Key": "secret123"})
+        assert r.status_code == 200, r.text
+        r = c.post("/reset", json={"task": "easy"},
+                   headers={"Authorization": "Bearer secret123"})
+        assert r.status_code == 200, r.text
+    finally:
+        os.environ.pop("API_KEY", None)
+
+
 if __name__ == "__main__":
     test_reward_paths()
     test_deadline_penalty()
     test_agent_and_grader()
     test_http_layer()
+    test_auth()
     print("OK — all checks passed")
