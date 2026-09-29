@@ -100,23 +100,38 @@ git remote add hf https://huggingface.co/spaces/<user>/exec_inbox_env
 git push hf main
 ```
 
-### Azure — free tier (Docker)
+### Azure — free tier (Container Apps)
 The optimized environment is deployed and running live on Azure Container Apps (`eastus`):
 **[https://exec-inbox.gentleisland-69027098.eastus.azurecontainerapps.io/](https://exec-inbox.gentleisland-69027098.eastus.azurecontainerapps.io/)**
 
-*(Note: Ingress is external, the API is public but holds no secrets/state per session.)*
+*(Ingress is external — the API is public but holds no secrets and no cross-session state.)*
 
-Use **Azure Container Apps** (consumption plan): first 180,000 vCPU-s,
-360,000 GiB-s, and 2M requests per month are free, and it scales to zero when
-idle. Push the image to any registry (Docker Hub free works), then:
+Container Apps (consumption plan) is free for the first 180,000 vCPU-s,
+360,000 GiB-s, and 2M requests/month, and scales to zero when idle.
+
+**On the free "Azure for Students" tier, two build/auth features are blocked**,
+so the one-liner `az containerapp up --source .` fails: it builds in the cloud
+via *ACR Tasks* (`TasksOperationsNotAllowed`) and wires *managed-identity*
+registry auth (`ExpressEnvironmentFeatureNotSupported`). Build the image
+**locally** and deploy it with **registry username/password** instead:
 ```bash
-az containerapp up \
-  --name exec-inbox --resource-group exec-inbox-rg \
-  --image docker.io/<user>/exec-inbox:latest \
-  --ingress external --target-port 7860
+# 1. build locally + push to any registry (ACR shown; Docker Hub free also works)
+az acr login --name <registry>
+docker build -t <registry>.azurecr.io/exec-inbox:latest .
+docker push  <registry>.azurecr.io/exec-inbox:latest
+
+# 2. deploy the prebuilt image — password auth, no managed identity
+az containerapp create \
+  --name exec-inbox --resource-group exec-inbox-rg --environment exec-inbox-env \
+  --image <registry>.azurecr.io/exec-inbox:latest \
+  --target-port 7860 --ingress external \
+  --registry-server <registry>.azurecr.io \
+  --registry-username <user> --registry-password <pass> \
+  --env-vars PORT=7860 --min-replicas 0 --max-replicas 1
 ```
-Container Apps routes ingress to `--target-port`, so the default `7860` is
-fine; no `PORT` override needed.
+Container Apps routes ingress to `--target-port`, so the default `7860` is fine.
+On a paid/standard subscription the `az containerapp up --source .` one-liner
+works and does the build+push+deploy for you.
 
 > App Service **F1 (free)** does *not* run custom Linux containers — that needs
 > Basic (B1+). For strictly-free Docker on Azure, use Container Apps above.
